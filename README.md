@@ -7,11 +7,14 @@ A lightweight, cross-platform desktop application for trimming MP4 videos with a
 - 🎬 **Simple Video Trimming**: Trim videos by specifying start and end times
 - ⚡ **Fast Processing**: Uses FFmpeg's stream copy for quick, lossless trimming
 - 🎯 **User-Friendly GUI**: Clean interface built with Dear ImGui
+- 📊 **Real-time Progress**: Live progress bar with percentage, time, and speed metrics
 - ✅ **Input Validation**: Comprehensive validation of timestamps and file paths
-- 📝 **Real-time Logging**: See FFmpeg output and progress in real-time
+- 📝 **Smart Logging**: See FFmpeg output and progress updates in real-time
 - 🛑 **Cancellation Support**: Stop operations at any time
+- 📂 **Native File Dialogs**: Browse files and folders with your system's native dialogs
 - 📁 **Recent Files**: Quick access to recently trimmed videos
 - ⚙️ **Configurable**: JSON-based configuration for paths and settings
+- 🗂️ **Auto-create Directories**: Output directories are created automatically if they don't exist
 
 ## Prerequisites
 

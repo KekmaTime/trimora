@@ -63,7 +63,9 @@ public:
 private:
     std::string build_ffmpeg_command(const TrimOptions& options) const;
     bool validate_ffmpeg_binary(const std::filesystem::path& path) const;
-    FFmpegProgress parse_progress_line(const std::string& line) const;
+    FFmpegProgress parse_progress_line(const std::string& line, double total_duration) const;
+    double get_video_duration(const std::filesystem::path& video_path) const;
+    double parse_time_to_seconds(const std::string& time_str) const;
 
     std::filesystem::path ffmpeg_path_;
     std::string ffmpeg_version_;

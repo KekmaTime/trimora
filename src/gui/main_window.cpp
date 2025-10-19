@@ -5,6 +5,8 @@
 #include <imgui.h>
 #include <nfd.h>
 #include <iostream>
+#include <iomanip>
+#include <sstream>
 #include <cstring>
 
 namespace trimora {
@@ -163,7 +165,11 @@ void MainWindow::render_control_buttons() {
     
     if (is_trimming_) {
         ImGui::SameLine();
-        ImGui::ProgressBar(current_progress_, ImVec2(-1, 0));
+        
+        // Format progress text
+        char progress_text[64];
+        snprintf(progress_text, sizeof(progress_text), "%.1f%%", current_progress_ * 100.0f);
+        ImGui::ProgressBar(current_progress_, ImVec2(-1, 0), progress_text);
     }
     
     ImGui::Spacing();
@@ -304,6 +310,33 @@ void MainWindow::stop_trim() {
 
 void MainWindow::on_progress_update(const FFmpegProgress& progress) {
     current_progress_ = static_cast<float>(progress.percentage / 100.0);
+    
+    // Log progress updates
+    if (!progress.current_time.empty() || progress.percentage > 0) {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        
+        std::ostringstream msg;
+        msg << "Progress: " << std::fixed << std::setprecision(1) << progress.percentage << "%";
+        
+        if (!progress.current_time.empty()) {
+            msg << " | Time: " << progress.current_time;
+        }
+        if (!progress.speed.empty()) {
+            msg << " | Speed: " << progress.speed;
+        }
+        
+        // Only add if it's a significant update (avoid spam)
+        if (log_messages_.empty() || 
+            log_messages_.back().find("Progress:") == std::string::npos ||
+            static_cast<int>(progress.percentage) % 10 == 0) {
+            log_messages_.push_back(msg.str());
+        } else {
+            // Replace last progress message
+            if (!log_messages_.empty() && log_messages_.back().find("Progress:") != std::string::npos) {
+                log_messages_.back() = msg.str();
+            }
+        }
+    }
 }
 
 void MainWindow::on_status_update(FFmpegStatus status, const std::string& message) {
