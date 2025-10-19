@@ -8,6 +8,7 @@ A lightweight, cross-platform desktop application for trimming MP4 videos with a
 - ⚡ **Fast Processing**: Uses FFmpeg's stream copy for quick, lossless trimming
 - 🎯 **User-Friendly GUI**: Clean interface built with Dear ImGui
 - 📊 **Real-time Progress**: Live progress bar with percentage, time, and speed metrics
+- 📦 **Batch Mode**: Trim multiple videos with the same time range in one go
 - ✅ **Input Validation**: Comprehensive validation of timestamps and file paths
 - 📝 **Smart Logging**: See FFmpeg output and progress updates in real-time
 - 🛑 **Cancellation Support**: Stop operations at any time
@@ -19,7 +20,7 @@ A lightweight, cross-platform desktop application for trimming MP4 videos with a
 ## Prerequisites
 
 ### System Requirements
-- **OS**: Linux (Arch/Ubuntu), Windows 10+, or macOS 11+
+- **OS**: Linux (Arch/Ubuntu), macOS 11+
 - **Compiler**: g++ 11+ or clang++ 13+ with C++20 support
 - **CMake**: 3.20 or higher
 - **FFmpeg**: 4.4 or higher (must be in PATH)
@@ -93,12 +94,21 @@ ninja
 
 ### Basic Workflow
 
+#### Single File Mode
 1. **Launch Trimora**: Run `./trimora` from the build directory
-2. **Select Input**: Browse or type the path to your MP4 file
+2. **Select Input**: Click "Browse..." to select your MP4 file
 3. **Set Output**: Choose the output directory
 4. **Set Time Range**: Enter start and end times in `HH:MM:SS.mmm` format
 5. **Trim**: Click "Trim Video" and watch the progress
 6. **Done**: The trimmed video will be saved with a timestamp
+
+#### Batch Mode
+1. **Enable Batch Mode**: Check the "Batch Mode" checkbox
+2. **Add Files**: Click "Add Files..." and select multiple videos (Ctrl+Click or Shift+Click)
+3. **Set Time Range**: Enter the same start and end times for all videos
+4. **Trim All**: Click "Trim All Videos" 
+5. **Watch Progress**: See each file processing with "File X/Y - Z%" progress
+6. **Done**: All trimmed videos saved in the output directory
 
 ### Time Format
 
@@ -116,7 +126,6 @@ Example: `myvideo_trimmed_20251019_143022.mp4`
 
 Configuration is stored in:
 - **Linux**: `~/.config/trimora/config.json`
-- **Windows**: `%APPDATA%\Trimora\config.json`
 - **macOS**: `~/Library/Application Support/Trimora/config.json`
 
 ### Example Config

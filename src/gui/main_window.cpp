@@ -81,6 +81,7 @@ void MainWindow::render() {
     // Main content
     render_input_section();
     render_time_inputs();
+    render_batch_mode();
     render_control_buttons();
     
     ImGui::Separator();
@@ -92,13 +93,36 @@ void MainWindow::render() {
 }
 
 void MainWindow::render_input_section() {
-    ImGui::Text("Input File:");
-    ImGui::PushItemWidth(-100);
-    ImGui::InputText("##input", input_file_, sizeof(input_file_));
-    ImGui::PopItemWidth();
-    ImGui::SameLine();
-    if (ImGui::Button("Browse...##input")) {
-        browse_input_file();
+    if (!batch_mode_) {
+        ImGui::Text("Input File:");
+        ImGui::PushItemWidth(-100);
+        ImGui::InputText("##input", input_file_, sizeof(input_file_));
+        ImGui::PopItemWidth();
+        ImGui::SameLine();
+        if (ImGui::Button("Browse...##input")) {
+            browse_input_file();
+        }
+    } else {
+        ImGui::Text("Batch Mode - %zu file(s) selected", batch_files_.size());
+        if (ImGui::Button("Add Files...##batch")) {
+            browse_input_files_batch();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Clear All##batch")) {
+            batch_files_.clear();
+            std::lock_guard<std::mutex> lock(log_mutex_);
+            log_messages_.push_back("Batch list cleared.");
+        }
+        
+        // Show batch file list
+        if (!batch_files_.empty()) {
+            ImGui::BeginChild("BatchFileList", ImVec2(0, 80), true);
+            for (size_t i = 0; i < batch_files_.size(); ++i) {
+                std::string label = std::to_string(i + 1) + ". " + batch_files_[i];
+                ImGui::Text("%s", label.c_str());
+            }
+            ImGui::EndChild();
+        }
     }
     
     ImGui::Text("Output Directory:");
@@ -132,17 +156,47 @@ void MainWindow::render_time_inputs() {
     ImGui::Spacing();
 }
 
+void MainWindow::render_batch_mode() {
+    ImGui::Checkbox("Batch Mode", &batch_mode_);
+    ImGui::SameLine();
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Trim multiple videos with the same time range");
+    }
+    
+    if (batch_mode_ && !batch_files_.empty()) {
+        ImGui::SameLine();
+        ImGui::TextColored(ImVec4(0.3f, 1.0f, 0.3f, 1.0f), 
+            "(%zu files ready)", batch_files_.size());
+    }
+    
+    ImGui::Spacing();
+}
+
 void MainWindow::render_control_buttons() {
-    bool can_trim = ffmpeg_executor_->is_ffmpeg_available() && 
-                    !is_trimming_ && 
-                    strlen(input_file_) > 0;
+    bool can_trim = false;
+    
+    if (!batch_mode_) {
+        can_trim = ffmpeg_executor_->is_ffmpeg_available() && 
+                   !is_trimming_ && 
+                   strlen(input_file_) > 0;
+    } else {
+        can_trim = ffmpeg_executor_->is_ffmpeg_available() && 
+                   !is_trimming_ && 
+                   !batch_files_.empty();
+    }
     
     if (!can_trim) {
         ImGui::BeginDisabled();
     }
     
-    if (ImGui::Button("Trim Video", ImVec2(120, 30))) {
-        start_trim();
+    if (batch_mode_) {
+        if (ImGui::Button("Trim All Videos", ImVec2(150, 30))) {
+            start_batch_trim();
+        }
+    } else {
+        if (ImGui::Button("Trim Video", ImVec2(120, 30))) {
+            start_trim();
+        }
     }
     
     if (!can_trim) {
@@ -167,8 +221,16 @@ void MainWindow::render_control_buttons() {
         ImGui::SameLine();
         
         // Format progress text
-        char progress_text[64];
-        snprintf(progress_text, sizeof(progress_text), "%.1f%%", current_progress_ * 100.0f);
+        char progress_text[128];
+        if (batch_mode_ && total_batch_count_ > 0) {
+            snprintf(progress_text, sizeof(progress_text), 
+                "File %zu/%zu - %.1f%%", 
+                current_batch_index_ + 1, 
+                total_batch_count_, 
+                current_progress_ * 100.0f);
+        } else {
+            snprintf(progress_text, sizeof(progress_text), "%.1f%%", current_progress_ * 100.0f);
+        }
         ImGui::ProgressBar(current_progress_, ImVec2(-1, 0), progress_text);
     }
     
@@ -221,6 +283,37 @@ void MainWindow::browse_input_file() {
         log_messages_.push_back("Selected: " + std::string(out_path));
         
         NFD_FreePath(out_path);
+    } else if (result == NFD_CANCEL) {
+        // User cancelled, do nothing
+    } else {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_messages_.push_back("Error: " + std::string(NFD_GetError()));
+    }
+}
+
+void MainWindow::browse_input_files_batch() {
+    const nfdpathset_t* path_set = nullptr;
+    nfdfilteritem_t filters[1] = {{"Video Files", "mp4,mkv,avi,mov,webm"}};
+    
+    nfdresult_t result = NFD_OpenDialogMultiple(&path_set, filters, 1, nullptr);
+    
+    if (result == NFD_OKAY) {
+        nfdpathsetsize_t count = 0;
+        NFD_PathSet_GetCount(path_set, &count);
+        
+        for (nfdpathsetsize_t i = 0; i < count; ++i) {
+            nfdchar_t* path = nullptr;
+            NFD_PathSet_GetPath(path_set, i, &path);
+            if (path) {
+                batch_files_.push_back(std::string(path));
+                NFD_PathSet_FreePath(path);
+            }
+        }
+        
+        NFD_PathSet_Free(path_set);
+        
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_messages_.push_back("Added " + std::to_string(count) + " files to batch list.");
     } else if (result == NFD_CANCEL) {
         // User cancelled, do nothing
     } else {
@@ -300,9 +393,114 @@ void MainWindow::start_trim() {
     );
 }
 
+void MainWindow::start_batch_trim() {
+    if (batch_files_.empty()) {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_messages_.push_back("Error: No files in batch list.");
+        return;
+    }
+    
+    // Validate time range
+    std::string error_msg;
+    auto time_validation = Validator::validate_time_range(start_time_, end_time_);
+    if (!time_validation) {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_messages_.push_back("Error: " + time_validation.error_message);
+        return;
+    }
+    
+    current_batch_index_ = 0;
+    total_batch_count_ = batch_files_.size();
+    is_trimming_ = true;
+    current_progress_ = 0.0f;
+    
+    {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_messages_.push_back("=== Starting batch trim of " + 
+            std::to_string(total_batch_count_) + " files ===");
+    }
+    
+    process_next_batch_file();
+}
+
+void MainWindow::process_next_batch_file() {
+    if (current_batch_index_ >= batch_files_.size()) {
+        // All done
+        is_trimming_ = false;
+        current_batch_index_ = 0;
+        total_batch_count_ = 0;
+        
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_messages_.push_back("=== Batch trim completed! ===");
+        return;
+    }
+    
+    // Get current file
+    std::string current_file = batch_files_[current_batch_index_];
+    
+    {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_messages_.push_back("Processing file " + 
+            std::to_string(current_batch_index_ + 1) + "/" + 
+            std::to_string(total_batch_count_) + ": " + current_file);
+    }
+    
+    // Build options
+    TrimOptions options;
+    options.input_file = current_file;
+    
+    // Generate output filename
+    options.output_file = FileManager::generate_output_filename(
+        options.input_file,
+        output_dir_,
+        config_manager_.get_config().output_naming_pattern
+    );
+    
+    options.start_time = start_time_;
+    options.end_time = end_time_;
+    options.use_copy_codec = true;
+    
+    current_progress_ = 0.0f;
+    
+    // Execute async
+    ffmpeg_executor_->execute_trim_async(
+        options,
+        [this](const FFmpegProgress& progress) {
+            on_progress_update(progress);
+        },
+        [this](FFmpegStatus status, const std::string& message) {
+            if (status == FFmpegStatus::Completed) {
+                std::lock_guard<std::mutex> lock(log_mutex_);
+                log_messages_.push_back("✓ File " + 
+                    std::to_string(current_batch_index_ + 1) + " completed.");
+                
+                // Move to next file
+                current_batch_index_++;
+                process_next_batch_file();
+            } else if (status == FFmpegStatus::Failed) {
+                std::lock_guard<std::mutex> lock(log_mutex_);
+                log_messages_.push_back("✗ File " + 
+                    std::to_string(current_batch_index_ + 1) + " failed: " + message);
+                
+                // Move to next file anyway
+                current_batch_index_++;
+                process_next_batch_file();
+            } else {
+                on_status_update(status, message);
+            }
+        }
+    );
+}
+
 void MainWindow::stop_trim() {
     ffmpeg_executor_->cancel();
     is_trimming_ = false;
+    
+    // Reset batch state
+    if (batch_mode_) {
+        current_batch_index_ = 0;
+        total_batch_count_ = 0;
+    }
     
     std::lock_guard<std::mutex> lock(log_mutex_);
     log_messages_.push_back("Trim operation cancelled.");

@@ -20,14 +20,18 @@ public:
 private:
     void render_input_section();
     void render_time_inputs();
+    void render_batch_mode();
     void render_control_buttons();
     void render_log_console();
     void render_recent_files();
 
     // Actions
     void browse_input_file();
+    void browse_input_files_batch();
     void browse_output_directory();
     void start_trim();
+    void start_batch_trim();
+    void process_next_batch_file();
     void stop_trim();
 
     // Callbacks
@@ -48,6 +52,12 @@ private:
     
     bool is_trimming_ = false;
     float current_progress_ = 0.0f;
+    
+    // Batch mode
+    bool batch_mode_ = false;
+    std::vector<std::string> batch_files_;
+    size_t current_batch_index_ = 0;
+    size_t total_batch_count_ = 0;
     
     // Log buffer
     std::vector<std::string> log_messages_;
