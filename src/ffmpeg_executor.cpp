@@ -118,6 +118,17 @@ bool FFmpegExecutor::execute_trim(const TrimOptions& options, std::string& error
         return false;
     }
     
+    // Create output directory if it doesn't exist
+    auto output_dir = options.output_file.parent_path();
+    if (!output_dir.empty() && !fs::exists(output_dir)) {
+        try {
+            fs::create_directories(output_dir);
+        } catch (const std::exception& e) {
+            error_message = "Failed to create output directory: " + std::string(e.what());
+            return false;
+        }
+    }
+    
     is_running_ = true;
     
     try {

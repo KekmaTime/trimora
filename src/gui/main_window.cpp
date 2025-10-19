@@ -3,6 +3,7 @@
 #include "../validator.hpp"
 
 #include <imgui.h>
+#include <nfd.h>
 #include <iostream>
 #include <cstring>
 
@@ -11,6 +12,9 @@ namespace trimora {
 MainWindow::MainWindow(ConfigManager& config_manager)
     : config_manager_(config_manager)
 {
+    // Initialize NFD
+    NFD_Init();
+    
     ffmpeg_executor_ = std::make_unique<FFmpegExecutor>();
     
     // Initialize output directory from config
@@ -24,13 +28,15 @@ MainWindow::MainWindow(ConfigManager& config_manager)
     }
 }
 
-MainWindow::~MainWindow() = default;
+MainWindow::~MainWindow() {
+    NFD_Quit();
+}
 
 void MainWindow::render() {
     ImGui::SetNextWindowPos(ImVec2(0, 0));
     ImGui::SetNextWindowSize(ImGui::GetIO().DisplaySize);
     
-    ImGui::Begin("Trimora Pro", nullptr, 
+    ImGui::Begin("Trimora", nullptr, 
         ImGuiWindowFlags_NoResize | 
         ImGuiWindowFlags_NoMove | 
         ImGuiWindowFlags_NoCollapse |
@@ -196,16 +202,46 @@ void MainWindow::render_recent_files() {
 }
 
 void MainWindow::browse_input_file() {
-    // TODO: Implement native file dialog
-    // For now, just log
-    std::lock_guard<std::mutex> lock(log_mutex_);
-    log_messages_.push_back("Note: File dialog not yet implemented. Please type path manually.");
+    nfdchar_t* out_path = nullptr;
+    nfdfilteritem_t filters[1] = {{"Video Files", "mp4,mkv,avi,mov,webm"}};
+    
+    nfdresult_t result = NFD_OpenDialog(&out_path, filters, 1, nullptr);
+    
+    if (result == NFD_OKAY) {
+        std::strncpy(input_file_, out_path, sizeof(input_file_) - 1);
+        input_file_[sizeof(input_file_) - 1] = '\0';
+        
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_messages_.push_back("Selected: " + std::string(out_path));
+        
+        NFD_FreePath(out_path);
+    } else if (result == NFD_CANCEL) {
+        // User cancelled, do nothing
+    } else {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_messages_.push_back("Error: " + std::string(NFD_GetError()));
+    }
 }
 
 void MainWindow::browse_output_directory() {
-    // TODO: Implement native directory dialog
-    std::lock_guard<std::mutex> lock(log_mutex_);
-    log_messages_.push_back("Note: Directory dialog not yet implemented. Please type path manually.");
+    nfdchar_t* out_path = nullptr;
+    
+    nfdresult_t result = NFD_PickFolder(&out_path, nullptr);
+    
+    if (result == NFD_OKAY) {
+        std::strncpy(output_dir_, out_path, sizeof(output_dir_) - 1);
+        output_dir_[sizeof(output_dir_) - 1] = '\0';
+        
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_messages_.push_back("Output directory: " + std::string(out_path));
+        
+        NFD_FreePath(out_path);
+    } else if (result == NFD_CANCEL) {
+        // User cancelled, do nothing
+    } else {
+        std::lock_guard<std::mutex> lock(log_mutex_);
+        log_messages_.push_back("Error: " + std::string(NFD_GetError()));
+    }
 }
 
 void MainWindow::start_trim() {

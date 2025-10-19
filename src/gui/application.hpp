@@ -44,7 +44,7 @@ private:
     // Window properties
     int window_width_ = 800;
     int window_height_ = 600;
-    std::string window_title_ = "Trimora Pro v1.0";
+    std::string window_title_ = "Trimora";
 };
 
 } // namespace trimora

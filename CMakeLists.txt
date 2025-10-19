@@ -26,6 +26,12 @@ if(NOT EXISTS ${IMGUI_DIR})
     message(FATAL_ERROR "ImGui not found in external/imgui. Please clone it or add as submodule.")
 endif()
 
+# nativefiledialog-extended
+set(NFD_DIR ${CMAKE_SOURCE_DIR}/external/nfd)
+if(EXISTS ${NFD_DIR})
+    add_subdirectory(${NFD_DIR})
+endif()
+
 # ImGui sources
 set(IMGUI_SOURCES
     ${IMGUI_DIR}/imgui.cpp
@@ -78,6 +84,11 @@ target_link_libraries(trimora PRIVATE
     ${X11_LIBRARIES}
     ${CMAKE_DL_LIBS}
 )
+
+# Link nfd if available
+if(TARGET nfd)
+    target_link_libraries(trimora PRIVATE nfd)
+endif()
 
 # Platform-specific settings
 if(UNIX AND NOT APPLE)
