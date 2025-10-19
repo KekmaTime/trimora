@@ -27,6 +27,11 @@ if ! command -v ffmpeg &> /dev/null; then
     echo "Install ffmpeg: sudo pacman -S ffmpeg  (Arch) or  sudo apt install ffmpeg  (Ubuntu)"
 fi
 
+if ! pkg-config --exists mpv; then
+    echo "Warning: libmpv not found. The video player will not work without it."
+    echo "Install mpv: sudo pacman -S mpv  (Arch) or  sudo apt install libmpv-dev  (Ubuntu)"
+fi
+
 # Check for ImGui
 echo ""
 echo "Checking for ImGui..."

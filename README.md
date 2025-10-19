@@ -5,6 +5,11 @@ A lightweight, cross-platform desktop application for trimming MP4 videos with a
 ## Features
 
 - 🎬 **Simple Video Trimming**: Trim videos by specifying start and end times
+- 📺 **Video Preview Player**: Built-in video player with playback controls (powered by libmpv)
+  - Play/pause/seek controls
+  - Visual timeline scrubbing
+  - "Set Start/End Here" buttons for visual trim points
+  - Volume and playback speed controls
 - ⚡ **Fast Processing**: Uses FFmpeg's stream copy for quick, lossless trimming
 - 🎯 **User-Friendly GUI**: Clean interface built with Dear ImGui
 - 📊 **Real-time Progress**: Live progress bar with percentage, time, and speed metrics
@@ -24,6 +29,7 @@ A lightweight, cross-platform desktop application for trimming MP4 videos with a
 - **Compiler**: g++ 11+ or clang++ 13+ with C++20 support
 - **CMake**: 3.20 or higher
 - **FFmpeg**: 4.4 or higher (must be in PATH)
+- **libmpv**: For video playback preview
 
 ### Dependencies
 - Boost (system, filesystem, process)
@@ -35,18 +41,18 @@ A lightweight, cross-platform desktop application for trimming MP4 videos with a
 
 **Arch Linux:**
 ```bash
-sudo pacman -S cmake ninja boost glfw-x11 ffmpeg
+sudo pacman -S cmake ninja boost glfw-x11 ffmpeg mpv
 ```
 
 **Ubuntu/Debian:**
 ```bash
 sudo apt update
-sudo apt install cmake ninja-build libboost-all-dev libglfw3-dev ffmpeg
+sudo apt install cmake ninja-build libboost-all-dev libglfw3-dev ffmpeg libmpv-dev
 ```
 
 **macOS:**
 ```bash
-brew install cmake ninja boost glfw ffmpeg
+brew install cmake ninja boost glfw ffmpeg mpv
 ```
 
 ## Building
@@ -97,10 +103,13 @@ ninja
 #### Single File Mode
 1. **Launch Trimora**: Run `./trimora` from the build directory
 2. **Select Input**: Click "Browse..." to select your MP4 file
-3. **Set Output**: Choose the output directory
-4. **Set Time Range**: Enter start and end times in `HH:MM:SS.mmm` format
-5. **Trim**: Click "Trim Video" and watch the progress
-6. **Done**: The trimmed video will be saved with a timestamp
+3. **Preview Video** (optional): Check "Show Player" to preview and visually select trim points
+   - Use play/pause and seek controls
+   - Click "Set Start Here" / "Set End Here" to mark trim points
+4. **Set Output**: Choose the output directory
+5. **Set Time Range**: Enter start and end times in `HH:MM:SS.mmm` format (or use visual markers)
+6. **Trim**: Click "Trim Video" and watch the progress
+7. **Done**: The trimmed video will be saved with a timestamp
 
 #### Batch Mode
 1. **Enable Batch Mode**: Check the "Batch Mode" checkbox

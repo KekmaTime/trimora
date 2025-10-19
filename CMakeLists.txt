@@ -19,6 +19,8 @@ find_package(Boost 1.70 REQUIRED COMPONENTS system filesystem)
 find_package(OpenGL REQUIRED)
 find_package(glfw3 REQUIRED)
 find_package(X11 REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(MPV REQUIRED mpv)
 
 # ImGui as submodule or vendored
 set(IMGUI_DIR ${CMAKE_SOURCE_DIR}/external/imgui)
@@ -50,6 +52,7 @@ set(TRIMORA_SOURCES
     src/file_manager.cpp
     src/validator.cpp
     src/config_manager.cpp
+    src/video_player.cpp
     src/gui/application.cpp
     src/gui/main_window.cpp
 )
@@ -59,6 +62,7 @@ set(TRIMORA_HEADERS
     src/file_manager.hpp
     src/validator.hpp
     src/config_manager.hpp
+    src/video_player.hpp
     src/gui/application.hpp
     src/gui/main_window.hpp
 )
@@ -74,6 +78,7 @@ target_include_directories(trimora PRIVATE
     ${IMGUI_DIR}
     ${IMGUI_DIR}/backends
     ${Boost_INCLUDE_DIRS}
+    ${MPV_INCLUDE_DIRS}
 )
 
 target_link_libraries(trimora PRIVATE
@@ -82,6 +87,7 @@ target_link_libraries(trimora PRIVATE
     OpenGL::GL
     glfw
     ${X11_LIBRARIES}
+    ${MPV_LIBRARIES}
     ${CMAKE_DL_LIBS}
 )
 
