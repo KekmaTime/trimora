@@ -5,6 +5,7 @@
 #include <functional>
 #include <optional>
 #include <filesystem>
+#include "trim_segment.hpp"
 
 namespace trimora {
 
@@ -14,6 +15,14 @@ struct TrimOptions {
     std::string start_time;  // Format: HH:MM:SS.mmm or seconds
     std::string end_time;    // Format: HH:MM:SS.mmm or seconds
     bool use_copy_codec = true;  // -c copy for fast trimming
+};
+
+struct MultiSegmentTrimOptions {
+    std::filesystem::path input_file;
+    std::filesystem::path output_file;  // Base name for output
+    std::vector<TrimSegment> segments;
+    bool merge_segments = true;  // Merge into one file or create separate files
+    bool use_copy_codec = true;
 };
 
 struct FFmpegProgress {
@@ -54,6 +63,13 @@ public:
         StatusCallback status_cb
     );
 
+    // Execute multi-segment trim (async with callbacks)
+    void execute_multi_segment_trim_async(
+        const MultiSegmentTrimOptions& options,
+        ProgressCallback progress_cb,
+        StatusCallback status_cb
+    );
+
     // Cancel running operation
     void cancel();
 
@@ -62,6 +78,11 @@ public:
 
 private:
     std::string build_ffmpeg_command(const TrimOptions& options) const;
+    std::string build_multi_segment_command(const MultiSegmentTrimOptions& options) const;
+    std::string build_concat_command(
+        const std::vector<std::filesystem::path>& segment_files,
+        const std::filesystem::path& output_file
+    ) const;
     bool validate_ffmpeg_binary(const std::filesystem::path& path) const;
     FFmpegProgress parse_progress_line(const std::string& line, double total_duration) const;
     double get_video_duration(const std::filesystem::path& video_path) const;

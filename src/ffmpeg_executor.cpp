@@ -1,6 +1,7 @@
 #include "ffmpeg_executor.hpp"
 #include <iostream>
 #include <sstream>
+#include <fstream>
 #include <iomanip>
 #include <regex>
 #include <thread>
@@ -426,6 +427,274 @@ FFmpegProgress FFmpegExecutor::parse_progress_line(const std::string& line, doub
     }
     
     return progress;
+}
+
+void FFmpegExecutor::execute_multi_segment_trim_async(
+    const MultiSegmentTrimOptions& options,
+    ProgressCallback progress_cb,
+    StatusCallback status_cb
+) {
+    std::thread worker([this, options, progress_cb, status_cb]() {
+        if (!is_ffmpeg_available()) {
+            status_cb(FFmpegStatus::Failed, "FFmpeg not found in PATH");
+            return;
+        }
+        
+        if (!fs::exists(options.input_file)) {
+            status_cb(FFmpegStatus::Failed, "Input file does not exist");
+            return;
+        }
+        
+        if (options.segments.empty()) {
+            status_cb(FFmpegStatus::Failed, "No segments specified");
+            return;
+        }
+        
+        // Create output directory
+        auto output_dir = options.output_file.parent_path();
+        if (!output_dir.empty() && !fs::exists(output_dir)) {
+            try {
+                fs::create_directories(output_dir);
+            } catch (const std::exception& e) {
+                status_cb(FFmpegStatus::Failed, "Failed to create output directory: " + std::string(e.what()));
+                return;
+            }
+        }
+        
+        is_running_ = true;
+        
+        if (options.merge_segments) {
+            // Merge mode: extract segments to temp files, then concat
+            status_cb(FFmpegStatus::Running, "Extracting segments...");
+            
+            std::vector<fs::path> temp_files;
+            fs::path temp_dir = fs::temp_directory_path() / "trimora_segments";
+            
+            try {
+                fs::create_directories(temp_dir);
+            } catch (const std::exception& e) {
+                is_running_ = false;
+                status_cb(FFmpegStatus::Failed, "Failed to create temp directory: " + std::string(e.what()));
+                return;
+            }
+            
+            // Extract each segment
+            for (size_t i = 0; i < options.segments.size(); ++i) {
+                if (!is_running_) {
+                    // Cleanup temp files
+                    for (const auto& temp : temp_files) {
+                        fs::remove(temp);
+                    }
+                    fs::remove(temp_dir);
+                    status_cb(FFmpegStatus::Cancelled, "Operation cancelled");
+                    return;
+                }
+                
+                const auto& segment = options.segments[i];
+                if (!segment.enabled) continue;
+                
+                fs::path temp_file = temp_dir / ("segment_" + std::to_string(i) + ".mp4");
+                temp_files.push_back(temp_file);
+                
+                // Build command for this segment
+                std::ostringstream cmd;
+                cmd << ffmpeg_path_.string() << " ";
+                cmd << "-y ";
+                cmd << "-ss " << segment.start_time << " ";
+                cmd << "-to " << segment.end_time << " ";
+                cmd << "-i \"" << options.input_file.string() << "\" ";
+                
+                if (options.use_copy_codec) {
+                    cmd << "-c copy ";
+                }
+                
+                cmd << "\"" << temp_file.string() << "\" ";
+                cmd << "2>&1";
+                
+                status_cb(FFmpegStatus::Running, "Extracting segment " + 
+                    std::to_string(i + 1) + "/" + std::to_string(options.segments.size()));
+                
+                FILE* pipe = popen(cmd.str().c_str(), "r");
+                if (!pipe) {
+                    for (const auto& temp : temp_files) {
+                        fs::remove(temp);
+                    }
+                    fs::remove(temp_dir);
+                    is_running_ = false;
+                    status_cb(FFmpegStatus::Failed, "Failed to execute FFmpeg for segment " + std::to_string(i + 1));
+                    return;
+                }
+                
+                std::array<char, 1024> buffer;
+                while (fgets(buffer.data(), buffer.size(), pipe) != nullptr && is_running_) {
+                    // Could parse progress here if needed
+                }
+                
+                int exit_code = pclose(pipe);
+                if (exit_code != 0) {
+                    for (const auto& temp : temp_files) {
+                        fs::remove(temp);
+                    }
+                    fs::remove(temp_dir);
+                    is_running_ = false;
+                    status_cb(FFmpegStatus::Failed, "Failed to extract segment " + std::to_string(i + 1));
+                    return;
+                }
+                
+                // Update progress
+                FFmpegProgress prog;
+                prog.percentage = ((i + 1) * 100.0) / (options.segments.size() + 1);
+                progress_cb(prog);
+            }
+            
+            if (!is_running_) {
+                for (const auto& temp : temp_files) {
+                    fs::remove(temp);
+                }
+                fs::remove(temp_dir);
+                status_cb(FFmpegStatus::Cancelled, "Operation cancelled");
+                return;
+            }
+            
+            // Now concatenate all segments
+            status_cb(FFmpegStatus::Running, "Merging segments...");
+            
+            std::string concat_result = build_concat_command(temp_files, options.output_file);
+            
+            FILE* pipe = popen(concat_result.c_str(), "r");
+            if (!pipe) {
+                for (const auto& temp : temp_files) {
+                    fs::remove(temp);
+                }
+                fs::remove(temp_dir);
+                is_running_ = false;
+                status_cb(FFmpegStatus::Failed, "Failed to execute FFmpeg concat");
+                return;
+            }
+            
+            std::array<char, 1024> buffer;
+            while (fgets(buffer.data(), buffer.size(), pipe) != nullptr && is_running_) {
+                // Could parse progress
+            }
+            
+            int exit_code = pclose(pipe);
+            
+            // Cleanup temp files
+            for (const auto& temp : temp_files) {
+                fs::remove(temp);
+            }
+            fs::remove(temp_dir);
+            
+            is_running_ = false;
+            
+            if (exit_code != 0) {
+                status_cb(FFmpegStatus::Failed, "Failed to merge segments");
+            } else {
+                FFmpegProgress final_prog;
+                final_prog.percentage = 100.0;
+                progress_cb(final_prog);
+                status_cb(FFmpegStatus::Completed, "All segments merged successfully");
+            }
+            
+        } else {
+            // Separate files mode: export each segment individually
+            for (size_t i = 0; i < options.segments.size(); ++i) {
+                if (!is_running_) {
+                    status_cb(FFmpegStatus::Cancelled, "Operation cancelled");
+                    return;
+                }
+                
+                const auto& segment = options.segments[i];
+                if (!segment.enabled) continue;
+                
+                // Build output filename
+                fs::path output = options.output_file;
+                std::string stem = output.stem().string();
+                std::string ext = output.extension().string();
+                std::string segment_name = segment.name.empty() ? 
+                    "segment_" + std::to_string(i + 1) : segment.name;
+                fs::path segment_output = output.parent_path() / (stem + "_" + segment_name + ext);
+                
+                // Build command
+                std::ostringstream cmd;
+                cmd << ffmpeg_path_.string() << " ";
+                cmd << "-y ";
+                cmd << "-ss " << segment.start_time << " ";
+                cmd << "-to " << segment.end_time << " ";
+                cmd << "-i \"" << options.input_file.string() << "\" ";
+                
+                if (options.use_copy_codec) {
+                    cmd << "-c copy ";
+                }
+                
+                cmd << "\"" << segment_output.string() << "\" ";
+                cmd << "2>&1";
+                
+                status_cb(FFmpegStatus::Running, "Exporting segment " + 
+                    std::to_string(i + 1) + "/" + std::to_string(options.segments.size()));
+                
+                FILE* pipe = popen(cmd.str().c_str(), "r");
+                if (!pipe) {
+                    is_running_ = false;
+                    status_cb(FFmpegStatus::Failed, "Failed to execute FFmpeg for segment " + std::to_string(i + 1));
+                    return;
+                }
+                
+                std::array<char, 1024> buffer;
+                while (fgets(buffer.data(), buffer.size(), pipe) != nullptr && is_running_) {
+                    // Could parse progress
+                }
+                
+                int exit_code = pclose(pipe);
+                if (exit_code != 0) {
+                    is_running_ = false;
+                    status_cb(FFmpegStatus::Failed, "Failed to export segment " + std::to_string(i + 1));
+                    return;
+                }
+                
+                // Update progress
+                FFmpegProgress prog;
+                prog.percentage = ((i + 1) * 100.0) / options.segments.size();
+                progress_cb(prog);
+            }
+            
+            is_running_ = false;
+            FFmpegProgress final_prog;
+            final_prog.percentage = 100.0;
+            progress_cb(final_prog);
+            status_cb(FFmpegStatus::Completed, "All segments exported successfully");
+        }
+    });
+    
+    worker.detach();
+}
+
+std::string FFmpegExecutor::build_concat_command(
+    const std::vector<std::filesystem::path>& segment_files,
+    const std::filesystem::path& output_file
+) const {
+    // Create a concat file list
+    fs::path temp_dir = fs::temp_directory_path() / "trimora_segments";
+    fs::path concat_file = temp_dir / "concat_list.txt";
+    
+    std::ofstream list(concat_file);
+    for (const auto& file : segment_files) {
+        list << "file '" << file.string() << "'\n";
+    }
+    list.close();
+    
+    // Build concat command
+    std::ostringstream cmd;
+    cmd << ffmpeg_path_.string() << " ";
+    cmd << "-y ";
+    cmd << "-f concat ";
+    cmd << "-safe 0 ";
+    cmd << "-i \"" << concat_file.string() << "\" ";
+    cmd << "-c copy ";
+    cmd << "\"" << output_file.string() << "\" ";
+    cmd << "2>&1";
+    
+    return cmd.str();
 }
 
 } // namespace trimora

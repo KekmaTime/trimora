@@ -53,6 +53,7 @@ set(TRIMORA_SOURCES
     src/validator.cpp
     src/config_manager.cpp
     src/video_player.cpp
+    src/trim_segment.cpp
     src/gui/application.cpp
     src/gui/main_window.cpp
 )
@@ -63,6 +64,7 @@ set(TRIMORA_HEADERS
     src/validator.hpp
     src/config_manager.hpp
     src/video_player.hpp
+    src/trim_segment.hpp
     src/gui/application.hpp
     src/gui/main_window.hpp
 )
