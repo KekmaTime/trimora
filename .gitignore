@@ -1,0 +1,35 @@
+# Build directories
+build/
+cmake-build-*/
+out/
+
+# Compiled files
+*.o
+*.obj
+*.exe
+*.out
+*.app
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Compile commands
+compile_commands.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Config (user-specific)
+config.json
+
+# Test outputs
+test_videos/
+*.mp4
+*.mkv
+*.avi
+
